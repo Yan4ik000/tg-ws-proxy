@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import webbrowser
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from proxy import __version__, get_link_host, parse_dc_ip_list, coerce_domain_list
@@ -14,11 +16,14 @@ from utils.update_check import RELEASES_PAGE_URL, get_status
 from ui.ctk_theme import (
     FIRST_RUN_FRAME_PAD,
     CtkTheme,
+    ctk_theme_for_platform,
     main_content_frame,
 )
+from ui.ctk_dialogs import show_info as ctk_show_info
 from ui.ctk_tooltip import attach_ctk_tooltip, attach_tooltip_to_widgets
 
 log = logging.getLogger('tg-mtproto-proxy')
+_APP_ICON_PATH = str(Path(__file__).resolve().parent.parent / "icon.ico")
 
 _TIP_HOST = (
     "Адрес, на котором прокси принимает подключения.\n"
@@ -179,9 +184,6 @@ def _show_connectivity_results(title_base: str, results: dict,
                                domain: str = '', label_prefix: str = 'DC',
                                auto_mode: bool = False,
                                unavailable_message: str = '') -> None:
-    import tkinter as _tk
-    from tkinter import messagebox as _mb
-
     ok = [dc for dc, v in results.items() if v is True]
     if auto_mode:
         if domain:
@@ -208,21 +210,11 @@ def _show_connectivity_results(title_base: str, results: dict,
                 + "\n".join(f"  {label_prefix}{dc}: {v}" for dc, v in fail)
             )
 
-    root = _tk.Tk()
-    root.withdraw()
-    try:
-        root.attributes("-topmost", True)
-    except Exception:
-        pass
-    _mb.showinfo(title, msg, parent=root)
-    root.destroy()
+    _show_ctk_info(title, msg)
 
 
 def _show_multi_connectivity_results(title_base: str, per_domain: dict,
                                      label_prefix: str = 'DC') -> None:
-    import tkinter as _tk
-    from tkinter import messagebox as _mb
-
     total = len(_CFPROXY_TEST_DCS)
     all_ok = True
     any_ok = False
@@ -254,14 +246,50 @@ def _show_multi_connectivity_results(title_base: str, per_domain: dict,
         title = f"{title_base}: недоступен"
     msg = "\n\n".join(blocks)
 
-    root = _tk.Tk()
-    root.withdraw()
+    _show_ctk_info(title, msg)
+
+
+def _show_ctk_info(title: str, message: str) -> None:
     try:
-        root.attributes("-topmost", True)
+        import customtkinter as ctk
+        import threading
+        from utils.tray_common import ensure_ctk_thread, ctk_run_dialog
+
+        if ensure_ctk_thread(ctk, "auto"):
+            if threading.current_thread().name == "ctk-root":
+                ctk_show_info(
+                    ctk,
+                    parent=None,
+                    theme=ctk_theme_for_platform(),
+                    title=title,
+                    message=message,
+                    icon_path=_APP_ICON_PATH,
+                )
+            else:
+                def _build(done: threading.Event) -> None:
+                    ctk_show_info(
+                        ctk,
+                        parent=None,
+                        theme=ctk_theme_for_platform(),
+                        title=title,
+                        message=message,
+                        icon_path=_APP_ICON_PATH,
+                    )
+                    done.set()
+                ctk_run_dialog(_build)
+            return
+    except Exception:
+        log.exception("CTk connectivity result dialog failed")
+        
+    try:
+        import tkinter as _tk
+        from tkinter import messagebox as _mb
+        root = _tk.Tk()
+        root.withdraw()
+        _mb.showinfo(title, message, parent=root)
+        root.destroy()
     except Exception:
         pass
-    _mb.showinfo(title, msg, parent=root)
-    root.destroy()
 
 _INNER_W = 396
 
