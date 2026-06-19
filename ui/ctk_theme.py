@@ -58,6 +58,13 @@ def apply_ctk_appearance(ctk: Any, mode: str = "auto") -> None:
     ctk.set_appearance_mode(_APPEARANCE_MODE_MAP.get(mode, "system"))
     ctk.set_default_color_theme("blue")
 
+
+def is_dark_mode(ctk: Any) -> bool:
+    try:
+        return str(ctk.get_appearance_mode()).lower() == "dark"
+    except Exception:
+        return False
+
 def center_ctk_geometry(root: Any, width: int, height: int) -> None:
     sw = root.winfo_screenwidth()
     sh = root.winfo_screenheight()

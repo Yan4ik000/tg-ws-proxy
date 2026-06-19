@@ -55,8 +55,9 @@ class CtkTooltip:
         except Exception:
             pass
         import customtkinter as ctk
+        from ui.ctk_theme import is_dark_mode
         
-        if ctk.get_appearance_mode() == "Dark":
+        if is_dark_mode(ctk):
             bg_color = "#2b2b2b"
             fg_color = "#f0f0f0"
             bd_color = "#3a3a3a"

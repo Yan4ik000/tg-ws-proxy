@@ -1,9 +1,15 @@
 import io
 import base64
 import tkinter as tk
+from enum import Enum
 from typing import Any, Optional, Sequence, Tuple
 
-from ui.ctk_theme import CtkTheme, center_ctk_geometry
+from ui.ctk_theme import CtkTheme, center_ctk_geometry, is_dark_mode
+
+class DialogKind(str, Enum):
+    INFO = "info"
+    ERROR = "error"
+    QUESTION = "question"
 
 def _clear_low_alpha(image: Any, threshold: int = 72) -> Any:
     alpha = image.getchannel("A")
@@ -11,7 +17,7 @@ def _clear_low_alpha(image: Any, threshold: int = 72) -> Any:
     image.putalpha(mask)
     return image
 
-def _modern_dialog_icon(kind: str, size: int = 40):
+def _modern_dialog_icon(kind: DialogKind, size: int = 40):
     try:
         from PIL import Image, ImageDraw, ImageFont
     except Exception:
@@ -21,17 +27,17 @@ def _modern_dialog_icon(kind: str, size: int = 40):
     canvas = size * scale
     img = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    fill = (217, 52, 52, 255) if kind == "error" else (51, 144, 236, 255)
+    fill = (217, 52, 52, 255) if kind == DialogKind.ERROR else (51, 144, 236, 255)
     pad = max(4, int(canvas * 0.08))
     draw.ellipse((pad, pad, canvas - pad - 1, canvas - pad - 1), fill=fill)
-    text = "?" if kind == "question" else "i" if kind == "info" else "!"
+    text = "?" if kind == DialogKind.QUESTION else "i" if kind == DialogKind.INFO else "!"
     try:
-        font_name = "segoeuib.ttf" if kind == "error" else "segoeui.ttf"
+        font_name = "segoeuib.ttf" if kind == DialogKind.ERROR else "segoeui.ttf"
         font = ImageFont.truetype(font_name, int(canvas * 0.68))
     except Exception:
         font = ImageFont.load_default()
         
-    if kind == "error":
+    if kind == DialogKind.ERROR:
         line = max(6, int(canvas * 0.13))
         inset = int(canvas * 0.31)
         draw.line((inset, inset, canvas - inset, canvas - inset), fill=(255, 255, 255, 255), width=line)
@@ -50,11 +56,6 @@ def _photo_from_image(image: Any) -> Any:
     data = base64.b64encode(buffer.getvalue()).decode("ascii")
     return tk.PhotoImage(data=data)
 
-def _appearance_is_dark(ctk: Any) -> bool:
-    try:
-        return str(ctk.get_appearance_mode()).lower() == "dark"
-    except Exception:
-        return False
 
 def _build_dialog_base(
     ctk: Any,
@@ -62,10 +63,10 @@ def _build_dialog_base(
     theme: CtkTheme,
     title: str,
     message: str,
-    kind: str,
+    kind: DialogKind,
     icon_path: Optional[str]
 ) -> Tuple[Any, Any, Any, float]:
-    dark = _appearance_is_dark(ctk)
+    dark = is_dark_mode(ctk)
     body_bg = "#2b2b2b" if dark else "#ffffff"
     text_color = theme.text_primary
 
@@ -175,14 +176,14 @@ def show_ctk_dialog(
     theme: CtkTheme,
     title: str,
     message: str,
-    kind: str = "info",
+    kind: DialogKind = DialogKind.INFO,
     buttons: Sequence[Tuple[str, str, bool]] = (("OK", "ok", True),),
     default: str = "ok",
     icon_path: Optional[str] = None,
 ) -> str:
     root, body, content_frame, scaling = _build_dialog_base(ctk, parent, theme, title, message, kind, icon_path)
     
-    dark = _appearance_is_dark(ctk)
+    dark = is_dark_mode(ctk)
     footer_bg = "#2b2b2b" if dark else "#f3f3f3"
 
     footer = ctk.CTkFrame(root, fg_color=footer_bg, corner_radius=0)
@@ -257,7 +258,7 @@ def ask_yes_no(
         theme=theme,
         title=title,
         message=message,
-        kind="question",
+        kind=DialogKind.QUESTION,
         buttons=(("Да", "yes", True), ("Нет", "no", False)),
         default="no",
         icon_path=icon_path,
@@ -278,7 +279,7 @@ def show_error(
         theme=theme,
         title=title,
         message=message,
-        kind="error",
+        kind=DialogKind.ERROR,
         buttons=(("OK", "ok", True),),
         icon_path=icon_path,
     )
@@ -299,7 +300,7 @@ def show_info(
         theme=theme,
         title=title,
         message=message,
-        kind="info",
+        kind=DialogKind.INFO,
         buttons=(("OK", "ok", True),),
         icon_path=icon_path,
     )
@@ -317,7 +318,7 @@ def run_with_progress(
 ) -> None:
     import threading as _threading
 
-    root, body, content_frame, scaling = _build_dialog_base(ctk, parent, theme, title, message, "info", icon_path)
+    root, body, content_frame, scaling = _build_dialog_base(ctk, parent, theme, title, message, DialogKind.INFO, icon_path)
     
     body.pack_configure(pady=(16, 26))
 
