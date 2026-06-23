@@ -4,7 +4,7 @@ import tkinter as tk
 from enum import Enum
 from typing import Any, Optional, Sequence, Tuple
 
-from ui.ctk_theme import CtkTheme, center_ctk_geometry, is_dark_mode
+from ui.ctk_theme import CtkTheme, center_ctk_geometry, resolve_ctk_color
 
 class DialogKind(str, Enum):
     INFO = "info"
@@ -66,11 +66,10 @@ def _build_dialog_base(
     kind: DialogKind,
     icon_path: Optional[str]
 ) -> Tuple[Any, Any, Any, float]:
-    dark = is_dark_mode(ctk)
-    body_bg = "#2b2b2b" if dark else "#ffffff"
+    body_bg = resolve_ctk_color(ctk, theme.bg)
     text_color = theme.text_primary
 
-    root = ctk.CTkToplevel(parent) if parent is not None else ctk.CTkToplevel()
+    root = ctk.CTkToplevel(parent)
     root.withdraw()
     root.title(title)
     root.configure(fg_color=body_bg)
@@ -88,7 +87,7 @@ def _build_dialog_base(
 
     if icon_path:
         try:
-            root.after(200, lambda: root.iconbitmap(icon_path))
+            root.after(300, lambda: root.iconbitmap(icon_path))
         except Exception:
             pass
 
@@ -183,8 +182,7 @@ def show_ctk_dialog(
 ) -> str:
     root, body, content_frame, scaling = _build_dialog_base(ctk, parent, theme, title, message, kind, icon_path)
     
-    dark = is_dark_mode(ctk)
-    footer_bg = "#2b2b2b" if dark else "#f3f3f3"
+    footer_bg = resolve_ctk_color(ctk, theme.field_bg)
 
     footer = ctk.CTkFrame(root, fg_color=footer_bg, corner_radius=0)
     footer.pack(fill="x", side="bottom")
@@ -315,7 +313,8 @@ def run_with_progress(
     message: str,
     icon_path: Optional[str] = None,
     task: Any,
-) -> None:
+) -> str:
+    import queue as _queue
     import threading as _threading
 
     root, body, content_frame, scaling = _build_dialog_base(ctk, parent, theme, title, message, DialogKind.INFO, icon_path)
@@ -331,7 +330,106 @@ def run_with_progress(
     )
     status_label.pack(fill="x", pady=(6, 0))
 
-    root.protocol("WM_DELETE_WINDOW", lambda: None)
+    footer = ctk.CTkFrame(root, fg_color=theme.field_bg, corner_radius=0)
+    footer.pack(fill="x", side="bottom")
+
+    btn_frame = ctk.CTkFrame(footer, fg_color="transparent")
+    btn_frame.pack(side="right", padx=16, pady=10)
+
+    result = {"value": "close"}
+    running = {"value": False}
+    buttons = []
+    task_events = _queue.Queue()
+
+    def close(value: str) -> None:
+        if running["value"]:
+            return
+        result["value"] = value
+        try:
+            root.grab_release()
+        except Exception:
+            pass
+        root.destroy()
+
+    def _set_running(value: bool) -> None:
+        running["value"] = value
+        state = "disabled" if value else "normal"
+        for btn in buttons:
+            btn.configure(state=state)
+        root.protocol("WM_DELETE_WINDOW", lambda: None if value else close("close"))
+
+    def _finish_task() -> None:
+        _set_running(False)
+
+    def _set_status(msg: str) -> None:
+        task_events.put(("status", msg))
+
+    def _poll_task_events() -> None:
+        while True:
+            try:
+                event, value = task_events.get_nowait()
+            except _queue.Empty:
+                break
+            if event == "status":
+                status_label.configure(text=value)
+            elif event == "finish":
+                _finish_task()
+
+        if running["value"]:
+            root.after(50, _poll_task_events)
+
+    def _run_task() -> None:
+        try:
+            task(_set_status)
+        except Exception as exc:
+            _set_status(f"Ошибка: {exc}")
+        finally:
+            task_events.put(("finish", ""))
+
+    def _on_update() -> None:
+        _set_running(True)
+        _poll_task_events()
+        _threading.Thread(target=_run_task, daemon=True).start()
+
+    btn_update = ctk.CTkButton(
+        btn_frame,
+        text="Обновить",
+        width=88,
+        height=34,
+        font=(theme.ui_font_family, 13),
+        command=_on_update,
+    )
+    btn_update.pack(side="left", padx=(0, 6))
+    buttons.append(btn_update)
+
+    btn_page = ctk.CTkButton(
+        btn_frame,
+        text="Страница",
+        width=88,
+        height=34,
+        font=(theme.ui_font_family, 13),
+        command=lambda: close("open"),
+    )
+    btn_page.pack(side="left", padx=(0, 6))
+    buttons.append(btn_page)
+
+    btn_close = ctk.CTkButton(
+        btn_frame,
+        text="Закрыть",
+        width=88,
+        height=34,
+        font=(theme.ui_font_family, 13),
+        fg_color=theme.field_bg,
+        hover_color=theme.field_border,
+        text_color=theme.text_primary,
+        border_width=1,
+        border_color=theme.field_border,
+        command=lambda: close("close"),
+    )
+    btn_close.pack(side="left")
+    buttons.append(btn_close)
+
+    root.protocol("WM_DELETE_WINDOW", lambda: close("close"))
 
     root.update_idletasks()
     width = max(320, int(root.winfo_reqwidth() / scaling))
@@ -345,20 +443,5 @@ def run_with_progress(
     except Exception:
         pass
 
-    def _set_status(msg: str) -> None:
-        try:
-            root.after(0, lambda: status_label.configure(text=msg))
-        except Exception:
-            pass
-
-    def _run_task() -> None:
-        try:
-            task(_set_status)
-        finally:
-            try:
-                root.after(0, root.destroy)
-            except Exception:
-                pass
-
-    _threading.Thread(target=_run_task, daemon=True).start()
     root.wait_window()
+    return result["value"]

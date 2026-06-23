@@ -55,16 +55,12 @@ class CtkTooltip:
         except Exception:
             pass
         import customtkinter as ctk
-        from ui.ctk_theme import is_dark_mode
-        
-        if is_dark_mode(ctk):
-            bg_color = "#2b2b2b"
-            fg_color = "#f0f0f0"
-            bd_color = "#3a3a3a"
-        else:
-            bg_color = "#ffffff"
-            fg_color = "#000000"
-            bd_color = "#d6d9dc"
+        from ui.ctk_theme import ctk_theme_for_platform, resolve_ctk_color
+
+        theme = ctk_theme_for_platform()
+        bg_color = resolve_ctk_color(ctk, theme.field_bg)
+        fg_color = resolve_ctk_color(ctk, theme.text_primary)
+        bd_color = resolve_ctk_color(ctk, theme.field_border)
 
         tw.configure(bg=bd_color)
         lbl = tk.Label(
@@ -78,7 +74,7 @@ class CtkTooltip:
             borderwidth=0,
             padx=10,
             pady=8,
-            font=("Segoe UI", 10) if _is_windows() else None,
+            font=(theme.ui_font_family, 10),
         )
         lbl.pack(padx=1, pady=1)
         x = self.widget.winfo_rootx() + 12
@@ -98,13 +94,6 @@ class CtkTooltip:
     def _on_destroy(self, _event: Any = None) -> None:
         self._hide()
         self.widget = None
-
-
-def _is_windows() -> bool:
-    import sys
-
-    return sys.platform == "win32"
-
 
 def attach_ctk_tooltip(
     widget: Any,

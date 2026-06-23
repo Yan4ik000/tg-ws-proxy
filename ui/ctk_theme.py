@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 import tkinter
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple, Union
 
 _tk_variable_del_guard_installed = False
 
@@ -64,6 +64,12 @@ def is_dark_mode(ctk: Any) -> bool:
         return str(ctk.get_appearance_mode()).lower() == "dark"
     except Exception:
         return False
+
+
+def resolve_ctk_color(ctk: Any, color: Union[str, Tuple[str, str]]) -> str:
+    if isinstance(color, tuple):
+        return color[1] if is_dark_mode(ctk) else color[0]
+    return color
 
 def center_ctk_geometry(root: Any, width: int, height: int) -> None:
     sw = root.winfo_screenwidth()

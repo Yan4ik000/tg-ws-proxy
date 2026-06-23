@@ -41,9 +41,9 @@ from utils.win32_theme import (
     apply_windows_dark_theme,
 )
 from utils.tray_common import (
-    APP_NAME, DEFAULT_CONFIG, FIRST_RUN_MARKER, IS_FROZEN, LOG_FILE,
+    APP_ICON_PATH, APP_NAME, DEFAULT_CONFIG, FIRST_RUN_MARKER, IS_FROZEN, LOG_FILE,
     acquire_lock, bootstrap, check_ipv6_warning, ctk_run_dialog,
-    ensure_ctk_thread, ensure_dirs, load_config, load_icon, log,
+    ensure_ctk_thread, ensure_dirs, is_ctk_thread, load_config, load_icon, log,
     quit_ctk, release_lock, restart_proxy,
     save_config, start_proxy, stop_proxy, tg_proxy_url,
 )
@@ -101,7 +101,7 @@ def _release_win_mutex() -> None:
             pass
         _win_mutex_handle = None
 
-ICON_PATH = str(Path(__file__).parent / "icon.ico")
+ICON_PATH = APP_ICON_PATH
 
 # win32 dialogs
 
@@ -119,7 +119,7 @@ _IDNO = 7
 
 def _run_ctk_modal(callback):
     if ctk is not None and ensure_ctk_thread(ctk, _config.get("appearance", "auto")):
-        if threading.current_thread().name == "ctk-root":
+        if is_ctk_thread():
             return callback()
 
         result = {"value": None}
@@ -179,6 +179,9 @@ def update_ctk_form(
     if ctk is None or not ensure_ctk_thread(ctk, _config.get("appearance", "auto")):
         result = _u32.MessageBoxW(None, text, title, _MB_YESNOCANCEL_Q)
         if result == _IDYES:
+            if download_url:
+                _perform_update(download_url)
+                return "close"
             return "update"
         if result == _IDNO:
             return "open"
@@ -186,6 +189,20 @@ def update_ctk_form(
 
     def _show_update_dialog() -> str:
         theme = ctk_theme_for_platform()
+        if IS_FROZEN and download_url:
+            def _do_update(set_status):
+                return _perform_update(download_url, set_status=set_status)
+
+            return ctk_run_with_progress(
+                ctk,
+                parent=None,
+                theme=theme,
+                title=title,
+                message=text,
+                icon_path=ICON_PATH,
+                task=_do_update,
+            )
+
         buttons = []
         if IS_FROZEN:
             buttons.append(("Обновить", "update", True))
@@ -203,27 +220,13 @@ def update_ctk_form(
         )
 
     choice = _run_ctk_modal(_show_update_dialog) or "close"
-    if choice == "update":
-        if download_url:
-            def _do_update(set_status):
-                _perform_update(download_url, set_status=set_status)
-
-            _run_ctk_modal(lambda: ctk_run_with_progress(
-                ctk,
-                parent=None,
-                theme=ctk_theme_for_platform(),
-                title="TG WS Proxy — Обновление",
-                message="Устанавливается обновление...",
-                icon_path=ICON_PATH,
-                task=_do_update,
-            ))
-        elif release_url:
-            webbrowser.open(release_url)
-            return "open"
+    if choice == "update" and release_url:
+        webbrowser.open(release_url)
+        return "open"
     return choice
 
 
-def _perform_update(download_url: str, set_status=None) -> None:
+def _perform_update(download_url: str, set_status=None) -> bool:
     def _step(msg: str) -> None:
         log.info("Update: %s", msg)
         if set_status:
@@ -261,7 +264,7 @@ def _perform_update(download_url: str, set_status=None) -> None:
                 tmp_path.unlink(missing_ok=True)
             except OSError:
                 pass
-        return
+        return False
 
     _step("Замена файла...")
     try:
@@ -274,7 +277,7 @@ def _perform_update(download_url: str, set_status=None) -> None:
             tmp_path.unlink(missing_ok=True)
         except OSError:
             pass
-        return
+        return False
 
     try:
         tmp_path.rename(cur_exe)
@@ -288,7 +291,7 @@ def _perform_update(download_url: str, set_status=None) -> None:
             tmp_path.unlink(missing_ok=True)
         except OSError:
             pass
-        return
+        return False
 
     _step("Перезапуск...")
     _release_win_mutex()

@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import webbrowser
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from proxy import __version__, get_link_host, parse_dc_ip_list, coerce_domain_list
@@ -23,7 +21,6 @@ from ui.ctk_dialogs import show_info as ctk_show_info
 from ui.ctk_tooltip import attach_ctk_tooltip, attach_tooltip_to_widgets
 
 log = logging.getLogger('tg-mtproto-proxy')
-_APP_ICON_PATH = str(Path(__file__).resolve().parent.parent / "icon.ico")
 
 _TIP_HOST = (
     "Адрес, на котором прокси принимает подключения.\n"
@@ -253,17 +250,17 @@ def _show_ctk_info(title: str, message: str) -> None:
     try:
         import customtkinter as ctk
         import threading
-        from utils.tray_common import ensure_ctk_thread, ctk_run_dialog
+        from utils.tray_common import APP_ICON_PATH, ctk_run_dialog, ensure_ctk_thread, is_ctk_thread
 
         if ensure_ctk_thread(ctk, "auto"):
-            if threading.current_thread().name == "ctk-root":
+            if is_ctk_thread():
                 ctk_show_info(
                     ctk,
                     parent=None,
                     theme=ctk_theme_for_platform(),
                     title=title,
                     message=message,
-                    icon_path=_APP_ICON_PATH,
+                    icon_path=APP_ICON_PATH,
                 )
             else:
                 def _build(done: threading.Event) -> None:
@@ -273,7 +270,7 @@ def _show_ctk_info(title: str, message: str) -> None:
                         theme=ctk_theme_for_platform(),
                         title=title,
                         message=message,
-                        icon_path=_APP_ICON_PATH,
+                        icon_path=APP_ICON_PATH,
                     )
                     done.set()
                 ctk_run_dialog(_build)
